@@ -1,13 +1,18 @@
 require 'formula'
 
 class GitManuals < Formula
-  url 'http://kernel.org/pub/software/scm/git/git-manpages-1.7.0.1.tar.bz2'
-  md5 '25f70e07db86b247e929a12cfc5bd1c5'
+  url 'http://kernel.org/pub/software/scm/git/git-manpages-1.7.0.3.tar.bz2'
+  md5 '72b899852af3cb1858999357b58ac7bb'
+end
+
+class GitHtmldocs < Formula
+  url 'http://kernel.org/pub/software/scm/git/git-htmldocs-1.7.0.3.tar.bz2'
+  md5 '6b75778734a1637af157f7e62b204322'
 end
 
 class Git < Formula
-  url 'http://kernel.org/pub/software/scm/git/git-1.7.0.1.tar.bz2'
-  md5 'c4315200efc90ea0f243cf0e86cda1f1'
+  url 'http://kernel.org/pub/software/scm/git/git-1.7.0.3.tar.bz2'
+  md5 '1a449b84dd60a066ea491a54346843e6'
   homepage 'http://git-scm.com'
 
   def install
@@ -16,6 +21,12 @@ class Git < Formula
     ENV['NO_DARWIN_PORTS']='1'
     # If local::lib is used you get a 'Only one of PREFIX or INSTALL_BASE can be given' error
     ENV['PERL_MM_OPT']='';
+    # build verbosely so we can debug better
+    ENV['V'] = '1'
+
+    inreplace "Makefile" do |s|
+      s.remove_make_var! %w{CFLAGS LDFLAGS}
+    end
 
     system "make", "prefix=#{prefix}", "install"
 
@@ -36,5 +47,7 @@ class Git < Formula
     # we could build the manpages ourselves, but the build process depends
     # on many other packages, and is somewhat crazy, this way is easier
     GitManuals.new.brew { man.install Dir['*'] }
+    doc = share+'doc/git-doc'
+    GitHtmldocs.new.brew { doc.install Dir['*'] }
   end
 end

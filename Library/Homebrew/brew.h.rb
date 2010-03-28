@@ -26,6 +26,7 @@ end
 
 def __make url, name
   require 'formula'
+  require 'digest'
 
   path = Formula.path name
   raise "#{path} already exists" if path.exist?
@@ -37,18 +38,39 @@ def __make url, name
     puts "Please check if you are creating a duplicate."
   end
 
+  version = Pathname.new(url).version
+  if version == nil
+    opoo "Version cannot be determined from URL."
+    puts "You'll need to add an explicit 'version' to the formula."
+  else
+    puts "Version detected as #{version}."
+  end
+
+  md5 = ''
+  if ARGV.include? "--cache" and version != nil
+    strategy = detect_download_strategy url
+    if strategy == CurlDownloadStrategy
+      d = strategy.new url, name, version, nil
+      the_tarball = d.fetch
+      md5 = the_tarball.md5
+      puts "MD5 is #{md5}"
+    else
+      puts "--cache requested, but we can only cache formulas that use Curl."
+    end
+  end
+
   template=<<-EOS
             require 'formula'
 
             class #{Formula.class_s name} <Formula
               url '#{url}'
               homepage ''
-              md5 ''
+              md5 '#{md5}'
 
   cmake       depends_on 'cmake'
 
               def install
-  autotools     system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
+  autotools     system "./configure", "--disable-debug", "--disable-dependency-tracking", "--prefix=\#{prefix}"
   cmake         system "cmake . \#{std_cmake_parameters}"
                 system "make install"
               end
@@ -301,7 +323,7 @@ def diy
     version=ARGV.next
   else
     version=path.version
-    raise "Couldn't determine version, try --set-version" if version.nil? or version.empty?
+    raise "Couldn't determine version, try --set-version" if version.to_s.empty?
   end
   
   if ARGV.include? '--set-name'
@@ -321,6 +343,8 @@ def diy
     "-DCMAKE_INSTALL_PREFIX=#{prefix}"
   elsif File.file? 'Makefile.am'
     "--prefix=#{prefix}"
+  else
+    raise "Couldn't determine build system"
   end
 end
 
@@ -432,14 +456,9 @@ class Cleaner
     
     [f.bin, f.sbin, f.lib].each {|d| clean_dir d}
     
-    # you can read all of this stuff online nowadays, save the space
-    # info pages are pants, everyone agrees apart from Richard Stallman
-    # feel free to ask for build options though! http://bit.ly/Homebrew
-    unlink = Proc.new{ |path| path.unlink unless f.skip_clean? path rescue nil }
-    %w[doc docs info].each do |fn|
-      unlink.call(f.share+fn)
-      unlink.call(f.prefix+fn)
-    end
+    # info pages suck
+    info = f.share+'info'
+    info.rmtree if info.directory? and not f.skip_clean? info
   end
 
 private
@@ -497,7 +516,7 @@ private
   end
 end
 
-def gcc_build
+def gcc_42_build
   `/usr/bin/gcc-4.2 -v 2>&1` =~ /build (\d{4,})/
   if $1
     $1.to_i 
@@ -507,6 +526,16 @@ def gcc_build
     # are different and thus, not useful.
     # FIXME I bet you 20 quid this causes a side effect — magic values tend to
     401
+  else
+    nil
+  end
+end
+alias :gcc_build :gcc_42_build # For compatibility
+
+def gcc_40_build
+  `/usr/bin/gcc-4.0 -v 2>&1` =~ /build (\d{4,})/
+  if $1
+    $1.to_i 
   else
     nil
   end

@@ -8,10 +8,9 @@ class SpatialiteTools <Formula
   depends_on 'libspatialite'
 
   def install
-    system "./configure", "--prefix=#{prefix}", 
-                          "--disable-debug",
+    system "./configure", "--disable-debug", "--disable-dependency-tracking",
+                          "--prefix=#{prefix}",
                           "--target=macosx"
-                          "--disable-dependency-tracking"
     system "make install"
   end
 end

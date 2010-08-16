@@ -1,3 +1,39 @@
+class ExecutionError <RuntimeError
+  attr :exit_status
+  attr :command
+
+  def initialize cmd, args = [], es = nil
+    @command = cmd
+    super "Failure while executing: #{cmd} #{pretty(args)*' '}"
+    @exit_status = es.exitstatus rescue 1
+  end
+
+  def was_running_configure?
+    @command == './configure'
+  end
+
+  private
+
+  def pretty args
+    args.collect do |arg|
+      if arg.to_s.include? ' '
+        "'#{ arg.gsub "'", "\\'" }'"
+      else
+        arg
+      end
+    end
+  end
+end
+
+class BuildError <ExecutionError
+  attr :env
+
+  def initialize cmd, args = [], es = nil
+    super
+    @env = ENV.to_hash
+  end
+end
+
 class Tty
   class <<self
     def blue; bold 34; end
@@ -104,11 +140,16 @@ def puts_columns items, cols = 4
 end
 
 def exec_editor *args
-  editor=ENV['EDITOR']
+  editor = ENV['HOMEBREW_EDITOR'] || ENV['EDITOR']
   if editor.nil?
     if system "/usr/bin/which -s mate"
+      # TextMate
       editor='mate'
+    elsif system "/usr/bin/which -s edit"
+      # BBEdit / TextWrangler
+      editor='edit'
     else
+      # Default to vim
       editor='/usr/bin/vim'
     end
   end
@@ -136,7 +177,7 @@ def archs_for_command cmd
   cmd = `/usr/bin/which #{cmd}` unless Pathname.new(cmd).absolute?
   cmd.gsub! ' ', '\\ '  # Escape spaces in the filename.
 
-  archs = IO.popen("/usr/bin/file #{cmd}").readlines.inject([]) do |archs, line|
+  archs = IO.popen("/usr/bin/file -L #{cmd}").readlines.inject([]) do |archs, line|
     case line
     when /Mach-O (executable|dynamically linked shared library) ppc/
       archs << :ppc7400
@@ -218,8 +259,25 @@ end
 def dump_build_env env
   puts "\"--use-llvm\" was specified" if ARGV.include? '--use-llvm'
 
-  %w[CC CXX LD CFLAGS CXXFLAGS CPPFLAGS LDFLAGS MACOSX_DEPLOYMENT_TARGET MAKEFLAGS PATH PKG_CONFIG_PATH HOMEBREW_USE_LLVM].each do |k|
+  %w[ CC CXX LD ].each do |k|
+    value = env[k]
+    if value
+      results = value
+      if File.exists? value and File.symlink? value
+        target = Pathname.new(value)
+        results += " => #{target.dirname+target.readlink}"
+      end
+      puts "#{k}: #{results}"
+    end
+  end
+
+  %w[ CFLAGS CXXFLAGS CPPFLAGS LDFLAGS MACOSX_DEPLOYMENT_TARGET MAKEFLAGS PKG_CONFIG_PATH
+      HOMEBREW_DEBUG HOMEBREW_VERBOSE HOMEBREW_USE_LLVM HOMEBREW_SVN ].each do |k|
     value = env[k]
     puts "#{k}: #{value}" if value
   end
+end
+
+def x11_installed?
+  Pathname.new('/usr/X11/lib/libpng.dylib').exist?
 end
